@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -21,6 +22,7 @@ from app.schemas.delivery import (
 )
 from app.services.delivery_service import DeliveryService
 from app.services.qrcode_service import QRCodeService
+from app.services.receipt_service import DeliveryReceiptService
 
 router = APIRouter(prefix="/deliveries", tags=["deliveries"])
 
@@ -309,3 +311,39 @@ async def authorize_admin(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     return delivery
+
+
+# ---------------------------------------------------------------------------
+# Comprovante de Entrega em PDF
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{delivery_id}/receipt",
+    dependencies=[require_role("admin", "driver")],
+    summary="Comprovante de entrega em PDF",
+    responses={
+        200: {
+            "content": {"application/pdf": {}},
+            "description": "PDF do comprovante de entrega",
+        }
+    },
+)
+async def get_delivery_receipt(
+    delivery_id: UUID,
+    current_user: CurrentUserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Gera e retorna o comprovante de entrega em PDF. Disponível apenas após DELIVERED."""
+    svc = DeliveryReceiptService(db)
+    try:
+        delivery = await svc.get_delivered_delivery(current_user.tenant_id, delivery_id)
+        pdf_bytes = svc.generate_pdf(delivery)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    filename = f"comprovante-{delivery.tracking_code}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
