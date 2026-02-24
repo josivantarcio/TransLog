@@ -20,8 +20,6 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     full_name: str | None = Field(None, min_length=2, max_length=255)
     phone: str | None = None
-    role: UserRole | None = None
-    is_active: bool | None = None
 
 
 class UserResponse(UserBase):
@@ -38,6 +36,17 @@ class UserResponse(UserBase):
 class UserPasswordUpdate(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=8)
+
+
+class UserResetPassword(BaseModel):
+    new_password: str = Field(..., min_length=8)
+
+
+class PaginatedUsers(BaseModel):
+    items: list[UserResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 class EmailVerifyRequest(BaseModel):
