@@ -169,6 +169,7 @@ async def client(db_session: AsyncSession, fake_redis: FakeRedis) -> AsyncGenera
     # Patch get_redis_client usado diretamente pelos serviços
     import app.core.redis as redis_module
     import app.services.auth_service as auth_svc_module
+    import app.services.delivery_service as delivery_svc_module
 
     original_get_redis = redis_module.get_redis_client
 
@@ -177,6 +178,7 @@ async def client(db_session: AsyncSession, fake_redis: FakeRedis) -> AsyncGenera
 
     redis_module.get_redis_client = fake_get_redis_client
     auth_svc_module.get_redis_client = fake_get_redis_client
+    delivery_svc_module.get_redis_client = fake_get_redis_client
 
     app.dependency_overrides[get_db] = override_get_db
 
@@ -192,3 +194,4 @@ async def client(db_session: AsyncSession, fake_redis: FakeRedis) -> AsyncGenera
     app.dependency_overrides.clear()
     redis_module.get_redis_client = original_get_redis
     auth_svc_module.get_redis_client = original_get_redis
+    delivery_svc_module.get_redis_client = original_get_redis

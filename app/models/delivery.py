@@ -80,6 +80,11 @@ class Delivery(Base, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
 
+    # Destinatário (recebedor do pedido)
+    recipient_name: Mapped[str | None] = mapped_column(String(255))
+    recipient_email: Mapped[str | None] = mapped_column(String(255), index=True)
+    recipient_phone: Mapped[str | None] = mapped_column(String(20))
+
     # Notas
     delivery_notes: Mapped[str | None] = mapped_column(Text)
     failure_reason: Mapped[str | None] = mapped_column(Text)

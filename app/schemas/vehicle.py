@@ -26,7 +26,6 @@ class VehicleUpdate(BaseModel):
     color: str | None = Field(None, max_length=50)
     vehicle_type: VehicleType | None = None
     driver_id: UUID | None = None
-    is_active: bool | None = None
 
 
 class VehicleResponse(VehicleBase):
@@ -38,3 +37,10 @@ class VehicleResponse(VehicleBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class PaginatedVehicles(BaseModel):
+    items: list[VehicleResponse]
+    total: int
+    page: int
+    page_size: int
