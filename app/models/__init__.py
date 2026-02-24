@@ -7,6 +7,7 @@ from app.models.vehicle import Vehicle, VehicleType  # noqa: F401
 from app.models.delivery import Delivery, DeliveryStatus  # noqa: F401
 from app.models.delivery_tracking import DeliveryTracking  # noqa: F401
 from app.models.email_verification import EmailVerification  # noqa: F401
+from app.models.delivery_authorization_log import DeliveryAuthorizationLog, AuthorizationMethod  # noqa: F401
 
 __all__ = [
     "Base",
@@ -22,4 +23,6 @@ __all__ = [
     "DeliveryStatus",
     "DeliveryTracking",
     "EmailVerification",
+    "DeliveryAuthorizationLog",
+    "AuthorizationMethod",
 ]

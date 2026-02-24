@@ -7,17 +7,19 @@ Stack de testes (equivalências Java → Python):
 - AssertJ     → asserções nativas do pytest
 
 Banco: SQLite in-memory via aiosqlite.
-Os tipos UUID do PostgreSQL são mapeados para String no SQLite via evento.
+Redis: FakeRedis in-memory (fakeredis[aioredis]).
+Os tipos UUID do PostgreSQL são mapeados para String no SQLite via TypeDecorator.
 """
 
 import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import event, text
+from sqlalchemy import event
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -29,11 +31,10 @@ from app.main import app
 from app.models.base import Base
 
 # ---------------------------------------------------------------------------
-# Adaptador: mapeia UUID(as_uuid=True) do PostgreSQL para String no SQLite
+# Adaptador: mapeia UUID(as_uuid=True) do PostgreSQL → String(36) no SQLite
 # ---------------------------------------------------------------------------
 
 class UUIDStr(TypeDecorator):
-    """Armazena UUID como string no SQLite."""
     impl = String(36)
     cache_ok = True
 
@@ -45,7 +46,6 @@ class UUIDStr(TypeDecorator):
 
 
 def _patch_uuid_for_sqlite(target_metadata):
-    """Substitui UUID(as_uuid=True) por String(36) nas colunas para testes SQLite."""
     for table in target_metadata.tables.values():
         for col in table.columns:
             if isinstance(col.type, PG_UUID):
@@ -58,12 +58,52 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 
 # ---------------------------------------------------------------------------
-# Fixtures de sessão (criadas uma vez por test session)
+# Mock Redis — substitui get_redis_client() nos testes
+# Simula um dict em memória com suporte a setex/exists/get/set
+# ---------------------------------------------------------------------------
+
+class FakeRedis:
+    """Redis fake simples para testes — evita dependência de servidor Redis."""
+
+    def __init__(self):
+        self._store: dict[str, str] = {}
+
+    async def get(self, key: str) -> str | None:
+        return self._store.get(key)
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self._store[key] = value
+
+    async def setex(self, key: str, ttl: int, value: str) -> None:
+        self._store[key] = value  # sem TTL real nos testes
+
+    async def exists(self, key: str) -> int:
+        return 1 if key in self._store else 0
+
+    async def delete(self, *keys: str) -> int:
+        count = 0
+        for k in keys:
+            if k in self._store:
+                del self._store[k]
+                count += 1
+        return count
+
+    async def publish(self, channel: str, message: str) -> None:
+        pass  # pub/sub não testado aqui
+
+    async def aclose(self) -> None:
+        pass
+
+    def clear(self):
+        self._store.clear()
+
+
+# ---------------------------------------------------------------------------
+# Fixtures de sessão
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """Loop de eventos compartilhado — necessário para fixtures session-scoped async."""
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
@@ -77,7 +117,6 @@ async def engine():
         poolclass=StaticPool,
     )
 
-    # Habilita FK no SQLite
     @event.listens_for(eng.sync_engine, "connect")
     def set_sqlite_pragma(dbapi_conn, _):
         dbapi_conn.execute("PRAGMA foreign_keys=ON")
@@ -98,7 +137,6 @@ async def engine():
 
 @pytest_asyncio.fixture
 async def db_session(engine) -> AsyncGenerator[AsyncSession, None]:
-    """Sessão de banco isolada: rollback automático ao final de cada teste."""
     TestSession = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
@@ -111,14 +149,39 @@ async def db_session(engine) -> AsyncGenerator[AsyncSession, None]:
         await session.rollback()
 
 
+@pytest.fixture
+def fake_redis() -> FakeRedis:
+    r = FakeRedis()
+    yield r
+    r.clear()
+
+
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Cliente HTTP assíncrono com override da dependência de banco."""
+async def client(db_session: AsyncSession, fake_redis: FakeRedis) -> AsyncGenerator[AsyncClient, None]:
+    """Cliente HTTP com overrides de DB e Redis."""
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
+    async def override_get_redis() -> FakeRedis:
+        return fake_redis
+
+    # Patch get_redis_client usado diretamente pelos serviços
+    import app.core.redis as redis_module
+    import app.services.auth_service as auth_svc_module
+
+    original_get_redis = redis_module.get_redis_client
+
+    async def fake_get_redis_client():
+        return fake_redis
+
+    redis_module.get_redis_client = fake_get_redis_client
+    auth_svc_module.get_redis_client = fake_get_redis_client
+
     app.dependency_overrides[get_db] = override_get_db
+
+    from app.core.dependencies import get_redis
+    app.dependency_overrides[get_redis] = override_get_redis
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -127,3 +190,5 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield ac
 
     app.dependency_overrides.clear()
+    redis_module.get_redis_client = original_get_redis
+    auth_svc_module.get_redis_client = original_get_redis

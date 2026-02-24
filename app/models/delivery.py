@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
@@ -73,6 +73,12 @@ class Delivery(Base, TimestampMixin):
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     estimated_delivery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Autorização manual (GPS falhou ou impossibilidade de confirmação automática)
+    manually_authorized: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    manually_authorized_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     # Notas
     delivery_notes: Mapped[str | None] = mapped_column(Text)
