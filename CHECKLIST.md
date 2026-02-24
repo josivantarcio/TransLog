@@ -5,6 +5,18 @@
 
 ---
 
+## ⚠️ Revisão Pendente (próxima sessão)
+
+**Análise de complexidade Big-O** — antes de continuar novas features, revisar:
+- Queries sem índice adequado (N+1, full table scan)
+- Paginação: verificar se `COUNT(*)` sobre subquery é O(n) e se pode ser otimizado
+- `get_history` do tracking: limite de 200 registros — avaliar se precisa de cursor-based pagination
+- Listagens com filtros: verificar planos de execução (EXPLAIN ANALYZE) nas queries principais
+- Redis: avaliar se as chaves têm TTL adequado e se o padrão de acesso é O(1)
+- Haversine no `confirm_delivery`: O(1) — ok, mas verificar se GPS validation pode ser indexada futuramente
+
+---
+
 ## Legenda
 - ✅ Feito e com testes
 - 🔄 Em andamento
